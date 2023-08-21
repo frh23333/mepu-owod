@@ -1,0 +1,6 @@
+datasets
+models
+proposals
+training_dir
+
+*.pyc
