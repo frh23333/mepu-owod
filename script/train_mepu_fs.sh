@@ -1,34 +1,41 @@
 # Task 1
-
+#generate pseudo labels using FreeSOLO
 python tools/gen_pseudo_label_new.py --proposal_path proposals/proposals_freesolo.json \
 	--data_path datasets/sowod --save_path datasets/sowod/Annotations/pseudo_label_fs.json \
 	--keep_type num --num_keep 5 --known_cls_num 19 --num_vis 50 --data_split t1_train  \
 
+#update Weibull models of REW using known object labels in Task 1
 python train_net.py --dist-url auto --num-gpus 4 --config config/REW/rew_t1_sowod.yaml \
 	OUTPUT_DIR training_dir/rew/sowod_t1  MODEL.WEIGHTS training_dir/rew/model_final.pth  \
 
+#assign REW scores for unknown pseudo labels 
 python train_net.py --eval-only --inference-rew --resume --dist-url auto --num-gpus 4 \
 	--config config/REW/rew_t1_sowod.yaml OUTPUT_DIR training_dir/rew/sowod_t1 \
 	DATASETS.TEST \(\"sowod_train_t1_fs\",\) \
     OPENSET.OUTPUT_PATH_REW datasets/sowod/Annotations/pseudo_label_fs.json \
 
+#train object detectors using known object labels and unknown pseudo labels 
 python train_net.py --resume --dist-url auto --num-gpus 4 --config config/MEPU-SOWOD/t1/train.yaml \
 	DATASETS.TRAIN \(\"sowod_train_t1_fs\",\) \
     OUTPUT_DIR training_dir/mepu-sowod/fs-t1-train  OPENSET.REW.GAMMA 4.0 \
 
+#inference using OLN for self-training
 python train_net.py --resume --eval-only --dist-url auto --num-gpus 4 --config config/MEPU-SOWOD/t1/self-train.yaml \
 	DATASETS.TEST \(\"sowod_train_t1\",\) OUTPUT_DIR training_dir/mepu-sowod/fs-t1-self-train OPENSET.OLN_INFERENCE True \
 	OPENSET.INFERENCE_SELT_TRAIN True MODEL.WEIGHTS training_dir/mepu-sowod/fs-t1-train/model_final.pth  \
 
+#generate new pseudo labels using OLN proposals
 python tools/gen_pseudo_label_new.py --proposal_path training_dir/mepu-sowod/fs-t1-self-train/inference/inference_results.json \
 	--data_path datasets/sowod --save_path datasets/sowod/Annotations/pseudo_label_st.json \
 	--keep_type percent --percent_keep 0.3 --known_cls_num 19 --data_split t1_train  \
 
+#assign REW scores for unknown pseudo labels 
 python train_net.py --eval-only --inference-rew --resume --dist-url auto --num-gpus 4 \
 	--config config/REW/rew_t1_sowod.yaml OUTPUT_DIR training_dir/rew/sowod_t1 \
 	DATASETS.TEST \(\"sowod_train_t1_st\",\) \
   	OPENSET.OUTPUT_PATH_REW datasets/sowod/Annotations/pseudo_label_st.json \
 
+#train object detectors using known object labels and new unknown pseudo labels 
 python train_net.py --resume --dist-url auto --num-gpus 4 --config config/MEPU-SOWOD/t1/self-train.yaml \
 	OUTPUT_DIR training_dir/mepu-sowod/fs-t1-self-train OPENSET.REW.GAMMA 4.0 \
 	MODEL.WEIGHTS training_dir/mepu-sowod/fs-t1-train/model_final.pth \

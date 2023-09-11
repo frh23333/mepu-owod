@@ -1,0 +1,12 @@
+fvcore==0.1.5.post20220512
+iopath==0.1.9
+matplotlib==3.5.2
+numpy==1.23.0
+omegaconf==2.2.2
+opencv_contrib_python==4.6.0.66
+Pillow==9.3.0
+pycocotools==2.0.4
+Pygments==2.13.0
+scipy==1.8.1
+tabulate==0.8.10
+tqdm==4.64.0

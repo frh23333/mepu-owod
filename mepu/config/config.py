@@ -34,6 +34,9 @@ def add_config(cfg):
     _C.OPENSET.NUM_PREV_KNOWN_CLASSES = 0
     _C.OPENSET.EVAL_UNKNOWN = False
     _C.OPENSET.OUTPUT_PATH_REW = "./"
+    _C.OPENSET.CALIBRATE = True
+    _C.OPENSET.CALIBRATE_WEIGHT = 5.0
+    _C.OPENSET.FILTER_THRESH = 0.5
     
 
     return _C

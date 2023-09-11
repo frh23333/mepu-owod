@@ -55,6 +55,7 @@ def fast_rcnn_inference(
     topk_per_image: int,
     oln_inference: bool, 
     eval_unknown: bool,
+    filter_thresh: float, 
 ):
     """
     Call `fast_rcnn_inference_single_image` for all images.
@@ -98,7 +99,7 @@ def fast_rcnn_inference(
     else:
         result_per_image = [
             fast_rcnn_inference_single_image_known(
-                boxes_per_image, scores_per_image, image_shape, score_thresh, nms_thresh, topk_per_image
+                boxes_per_image, scores_per_image, image_shape, score_thresh, nms_thresh, topk_per_image, filter_thresh
             )
             for scores_per_image, boxes_per_image, image_shape in zip(scores, boxes, image_shapes)
         ]
@@ -167,6 +168,7 @@ def fast_rcnn_inference_single_image_known(
     score_thresh: float,
     nms_thresh: float,
     topk_per_image: int,
+    filter_thresh: float, 
 ):
     """
     Single-image inference. Return bounding-box detection results by thresholding
@@ -191,13 +193,12 @@ def fast_rcnn_inference_single_image_known(
     boxes.clip(image_shape)
     boxes = boxes.tensor.view(-1, num_bbox_reg_classes, 4)  # R x C x 4
     
-    
-    scores[:, :-1][scores[:, -1] > 0.05] = -1
+    scores[:, :-1][scores[:, -1] > filter_thresh] = -1
 
     # 1. Filter results based on detection scores. It can make NMS more efficient
     #    by filtering out low-confidence detections.
     filter_mask = scores[:, :-1] > score_thresh
-    filter_mask_unk = scores[:, -1] > (score_thresh / 20)
+    filter_mask_unk = scores[:, -1] > (score_thresh / 5)
     filter_mask = torch.cat([filter_mask, filter_mask_unk.reshape([-1, 1])], dim = 1)
     
     # R' x 2. First column contains indices of the R predictions;
@@ -303,8 +304,10 @@ class FastRCNNOutputLayers_OLN(nn.Module):
         oln_inference: bool = False, 
 
         eval_unknown = False,
-        hard_thr_ae = False, 
         num_known_classes = 80, 
+        calibrate = True, 
+        calibrate_weight = 5.0, 
+        filter_thresh = 0.1, 
     ):
         """
         NOTE: this interface is experimental.
@@ -374,9 +377,11 @@ class FastRCNNOutputLayers_OLN(nn.Module):
         self.nms_thresh_oln = nms_thresh_oln
 
         self.eval_unknown = eval_unknown
-        self.hard_thr_ae = hard_thr_ae
         self.num_known_classes = num_known_classes
         self.valid_classes = list(range(num_known_classes, num_classes-1))
+        self.calibrate = calibrate
+        self.calibrate_weight = calibrate_weight
+        self.filter_thresh = filter_thresh
 
     @classmethod
     def from_config(cls, cfg, input_shape):
@@ -396,8 +401,10 @@ class FastRCNNOutputLayers_OLN(nn.Module):
 
             "nms_thresh_oln": cfg.OPENSET.OLN.NMS_THRESH,
             "eval_unknown": cfg.OPENSET.EVAL_UNKNOWN,
-            "hard_thr_ae": cfg.OPENSET.REW.HARD_THR, 
             "num_known_classes": cfg.OPENSET.NUM_KNOWN_CLASSES, 
+            "calibrate_weight": cfg.OPENSET.CALIBRATE_WEIGHT,
+            "calibrate": cfg.OPENSET.CALIBRATE,
+            "filter_thresh": cfg.OPENSET.FILTER_THRESH, 
         }
 
     def forward(self, x):
@@ -497,7 +504,7 @@ class FastRCNNOutputLayers_OLN(nn.Module):
         
         pred_scores[:, self.valid_classes] = -10000.0
         
-        if not proposals[0].has("soft_labels") or self.hard_thr_ae:
+        if not proposals[0].has("soft_labels"):
             loss_cls = cross_entropy(pred_scores, gt_classes, reduction="mean")
             loss_box_reg = self.box_reg_loss(
                 proposal_boxes, gt_boxes, proposal_deltas, gt_classes
@@ -524,7 +531,7 @@ class FastRCNNOutputLayers_OLN(nn.Module):
         }
 
         if self.enable_oln:
-            if not proposals[0].has("soft_labels")  or self.hard_thr_ae:
+            if not proposals[0].has("soft_labels"):
                 loss_oln = self.oln_loss(pred_scores_oln, proposal_boxes_oln, gt_boxes_oln, iou_with_gt, \
                      gt_classes_oln, "mean")
                 losses["loss_oln_box"] = loss_oln
@@ -632,6 +639,7 @@ class FastRCNNOutputLayers_OLN(nn.Module):
             self.test_topk_per_image,
             self.oln_inference, 
             self.eval_unknown, 
+            self.filter_thresh
         )
 
     def predict_boxes_oln(
@@ -725,5 +733,12 @@ class FastRCNNOutputLayers_OLN(nn.Module):
         """
         scores, _ = predictions
         num_inst_per_image = [len(p) for p in proposals]
-        probs = F.softmax(scores, dim=-1)
+        if not self.calibrate:
+            probs = F.softmax(scores, dim=-1)
+        else:
+            weight = scores.new_ones([scores.shape[1]])
+            weight[-2] = self.calibrate_weight
+            scores_exp = scores.exp() * weight
+            scores_sum_exp = scores_exp.sum(dim=-1, keepdim=True)
+            probs = scores_exp / scores_sum_exp
         return probs.split(num_inst_per_image, dim=0)

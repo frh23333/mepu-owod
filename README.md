@@ -7,6 +7,9 @@ Code Implementation of "Unsupervised Recognition of Unknown Objects for Open-Wor
 ### Our Key Technique: Reconstruction Error-based Weibull modeling (REW)
 <p align="center"> <img src='figs/rew.png' align="center" height="200px"> </p>
 
+# Update
+The pre-trained SOCO backbone, pre-computed proposals and trained weight of MEPU can be downloaded from [GoogleDrive](https://drive.google.com/drive/folders/1AhFY-aH-ewwukEFlA3QsE5tjGR3lw1j4?usp=sharing).
+
 # Dataset Preparation 
 
 Please first download the MS COCO dataset and the directory structure should be like:
