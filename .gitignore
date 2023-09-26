@@ -1,10 +1,11 @@
-models
-proposals
-training_dir
-vis_dist
-img_vis
+/models
+/proposals
+/training_dir
+/vis_dist
+/img_vis
 nohup.out
-datasets
+/datasets
+/detectron2
 */__pycache__
 */*/__pycache__
 */*/*/__pycache__

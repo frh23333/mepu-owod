@@ -40,11 +40,25 @@ mepu-owod/
         └── JPEGImages/
 ```
 
+# Installation
+
+```bash
+conda create -n mepu python=3.8
+conda activate mepu
+conda install pytorch==1.12.0 torchvision==0.13.0 torchaudio==0.12.0 cudatoolkit=10.2 -c pytorch
+
+git clone https://github.com/facebookresearch/detectron2.git
+cd detectron2
+pip install -e . 
+cd .. 
+pip install -r requirements.txt
+```
+
 # Training and Testing
 
 Unsupervised pretraining of REW:
 ```
-sh train_rew.sh
+sh script/train_rew.sh
 ```
 Train MEPU on the S-OWOD benchmark:
 ```
