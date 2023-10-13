@@ -467,9 +467,11 @@ class OFFLINE_AE_RPN(nn.Module):
                             picture_name="level"+str(level)+".jpg" if comm.is_main_process() else None)
                         self.y_bg[level] = torch.tensor(y_bg_level).cuda()
                         self.y_kn[level] = torch.tensor(y_kn_level).cuda()
-
-                torch.distributed.broadcast(self.y_kn, 0)
-                torch.distributed.broadcast(self.y_bg, 0)
+                
+                world_size = comm.get_world_size()
+                if world_size > 1:
+                    torch.distributed.broadcast(self.y_kn, 0)
+                    torch.distributed.broadcast(self.y_bg, 0)
 
                 self.recons_error_levels_kn = torch.zeros([5, self.num_samples]).cuda()
                 self.recons_error_levels_bg = torch.zeros([5, 2 * self.num_samples]).cuda()
@@ -478,12 +480,17 @@ class OFFLINE_AE_RPN(nn.Module):
 
     def gather_all_record(self):
         world_size = comm.get_world_size()
-        tensor_list_kn = [torch.ones_like(self.recons_error_levels_kn) for _ in range(world_size)]
-        tensor_list_bg = [torch.ones_like(self.recons_error_levels_bg) for _ in range(world_size)]
-        tensor_list_ptr = [torch.ones_like(self.recons_error_levels_ptr) for _ in range(world_size)]
-        torch.distributed.all_gather(tensor_list_kn, self.recons_error_levels_kn, async_op=False)
-        torch.distributed.all_gather(tensor_list_bg, self.recons_error_levels_bg, async_op=False)
-        torch.distributed.all_gather(tensor_list_ptr, self.recons_error_levels_ptr, async_op=False)
+        if world_size == 1:
+            tensor_list_kn = [self.recons_error_levels_kn]
+            tensor_list_bg = [self.recons_error_levels_bg]
+            tensor_list_ptr = [self.recons_error_levels_ptr]
+        else:
+            tensor_list_kn = [torch.ones_like(self.recons_error_levels_kn) for _ in range(world_size)]
+            tensor_list_bg = [torch.ones_like(self.recons_error_levels_bg) for _ in range(world_size)]
+            tensor_list_ptr = [torch.ones_like(self.recons_error_levels_ptr) for _ in range(world_size)]
+            torch.distributed.all_gather(tensor_list_kn, self.recons_error_levels_kn, async_op=False)
+            torch.distributed.all_gather(tensor_list_bg, self.recons_error_levels_bg, async_op=False)
+            torch.distributed.all_gather(tensor_list_ptr, self.recons_error_levels_ptr, async_op=False)
         record_list_kn, record_list_bg = [], []
         for level in range(5):
             record_list_unk_level, record_list_kn_level, record_list_bg_level = [], [], []
